@@ -1,0 +1,39 @@
+// LD<buffer>: loads data from an address inside rodata or bss into buffer
+0x00: LDA <loc, 0x00: rodata, 0x01: bss> <address>
+0x01: LDB <loc, 0x00: rodata, 0x01: bss> <address>
+0x02: LDX <loc, 0x00: rodata, 0x01: bss> <address>
+
+// ST<buffer>: stores data from a buffer into an address inside bss
+0x03: STA <address>
+0x04: STB <address>
+0x05: STX <address>
+
+// INC: increments a buffer by 1
+0x06: INC <buffer, 0x00: A, 0x01: B, 0x02: X>
+
+// DEC: decrements a buffer by 1
+0x07: DEC <buffer, 0x00: A, 0x01: B, 0x02: X>
+
+// ADD: adds buffer B to buffer A
+0x08: ADD
+
+// SUB: subtracts buffer B from buffer A
+0x09: SUB
+
+// OUT: outputs a buffer
+0x0A: OUT <buffer, 0x00: A, 0x01: B, 0x02: X>
+
+// CMP: compares buffer1 <operator> buffer2
+0x0B: CMP <buffer1, 0x00: A, 0x01: B, 0x02: X> <buffer2, 0x00: A, 0x01: B, 0x02: X> <operator, 0x00: ==, 0x01: !=, 0x02: >, 0x03: <, 0x04: >=, 0x05: <= >
+
+// JMP: jumps PC to address index in code list
+0x0C: JMP <address>
+
+// JC: jumps PC to address index in code list IF the compare status is true
+0x0D: JC <address>
+
+// JSR: jumps PC to address index in code list
+    then runs a code until it hits instruction 0x0F which is RTS
+    then returns PC back to line where last JSR is called
+0x0E: JSR <address>
+0x0F: RTS
