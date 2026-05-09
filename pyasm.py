@@ -1,4 +1,12 @@
 import sys
+import random
+
+try:    #try importing all required packages
+    from beep import beep
+except: #otherwise, display error message instead
+    print(" script error: one of packages are missing, please run 'install-packages.bat' to install all required packages (make sure you have pip installed)")
+    input("press enter to exit")
+    sys.exit()
 
 ## pyasm: python assembly
 ## created by python beginner u/windowssandbox
@@ -12,6 +20,7 @@ last_JSR = []
 #modifiers
 rodata_size = 0xFFFF # (default: 0xFFFF 2kb)
 bss_size    = 0xFFFF # (default: 0xFFFF 2kb)
+buff_size   = 0xFF   # (default: 0xFF bytes) for each buffer
 debug_mode  = 0x1    # (default: 0x0, recommended: 0x1)
 
 #rom data
@@ -27,19 +36,9 @@ debug_mode  = 0x1    # (default: 0x0, recommended: 0x1)
     address pointer must be valid
 """
 rodata = {
-    0x0: { #starting_value
+    0x0: {
         "addr": 0x0000,
-        "data": 0x7,
-        "size": 0x1
-    },
-    0x1: { #value_to_add
-        "addr": 0x0001,
-        "data": 0xA,
-        "size": 0x1
-    },
-    0x2: { #max_add
-        "addr": 0x0002,
-        "data": 0xF,
+        "data": 0x00,
         "size": 0x1
     },
 }
@@ -57,12 +56,21 @@ rodata = {
     address pointer must be valid
 """
 bss = {
-    0x0: { #result
+    0x0: {
         "addr": 0x0000,
-        "data": 0x0,
+        "data": 0x00,
         "size": 0x1
-    }
+    },
 }
+
+# your code to execute:
+## it's strongly recommended that you write lines of code like this:
+## <opcode>, <its arguments>, # (instruction in text format)
+## (put multiple indexes in one line)
+code = [
+    ## main: 0x00
+        
+]
 
 #buffers
 buff = { 
@@ -72,30 +80,79 @@ buff = {
 }
 
 #check for main
+def exit(msg=""):
+    if not msg == "": print(msg)
+    input("press enter to exit")
+    sys.exit()
+
 def chk():
     global chk_status
     if chk_status == False:
-        input("press enter to exit") 
-        sys.exit()
+        exit()
 
-#checks for instructions
+def tryhex(data):
+    try:
+        return hex(data)
+    except:
+        return str(data)
+
+def trylen(data):
+    try:
+        return len(data)
+    except:
+        return 1
+
+def chk_buffers_size():
+    global buff_size
+    new_buff_size = 0x00
+    
+    As = trylen(buff["A"])
+    Bs = trylen(buff["B"])
+    Xs = trylen(buff["X"])
+    
+    Fer = " fatal error:"
+    Aem = f" {Fer} buffer A overflowed by {hex(As-buff_size)} bytes"
+    Bem = f" {Fer} buffer B overflowed by {hex(Bs-buff_size)} bytes"
+    Xem = f" {Fer} buffer X overflowed by {hex(Xs-buff_size)} bytes"
+    sf  = f"|SUGGESTED FIX: expand buff_size to {hex(new_buff_size)} bytes"
+    
+    if As <= buff_size: 0
+    else: print(Aem); new_buff_size = buff_size+As; print(sf); exit()
+    if Bs <= buff_size: 0
+    else: print(Bem); new_buff_size = buff_size+Bs; print(sf); exit()
+    if Xs <= buff_size: 0
+    else: print(Xem); new_buff_size = buff_size+Xs; print(sf); exit()
+
+def chk_target_buffer(_buff):
+    tb = "."
+    em = " error: invalid target buffer"
+    
+    if   _buff == 0x00: tb = "A"
+    elif _buff == 0x01: tb = "B"
+    elif _buff == 0x02: tb = "X"
+    else: exit(em)
+    
+    return tb
+
+#funcs for instructions
 def chk_address(loc, address):
     global rodata, bss, buff
     errors = 0
     
-    if loc == 0x00: #rodata
+    if loc == 0x00:   #rodata
         for i in rodata:
             if address == rodata[i]["addr"]: return True
     
-    if loc == 0x01: #bss
+    elif loc == 0x01: #bss
         for i in bss:
             if address == bss[i]["addr"]: return True
+    
+    else: exit(" fatal error: invalid loc")
     
     #if it makes it to this line then it means it's not valid
     if loc == 0x00: print(f" fatal error: address {hex(address)} is not valid address inside rodata")
     if loc == 0x01: print(f" fatal error: address {hex(address)} is not valid address inside bss")
-    input("press enter to exit")
-    sys.exit()
+    exit()
 
 def get_address_data(loc, address):
     global rodata, bss
@@ -285,18 +342,20 @@ def INC(_buff): # 0x06, 1 arg
     )
     desc: increment
     """
-    em = " error: cannot increment a string"
-    en = "press enter to exit"
+    em  = " error: cannot increment a string"
+    em2 = " error: target buffer is invalid"
     
     if _buff == 0x00:
         if isinstance(buff["A"], int): buff["A"] += 1
-        else: print(em); input(en); sys.exit()
-    if _buff == 0x01:
+        else: print(em); exit()
+    elif _buff == 0x01:
         if isinstance(buff["B"], int): buff["B"] += 1
-        else: print(em); input(en); sys.exit()
-    if _buff == 0x02:
+        else: print(em); exit()
+    elif _buff == 0x02:
         if isinstance(buff["X"], int): buff["X"] += 1
-        else: print(em); input(en); sys.exit()
+        else: print(em); exit()
+    else:
+        print(em2); exit()
 
 def DEC(_buff): # 0x07, 1 arg
     """
@@ -307,38 +366,38 @@ def DEC(_buff): # 0x07, 1 arg
     )
     desc: decrement
     """
-    em = " error: cannot decrement a string"
-    en = "press enter to exit"
+    em  = " error: cannot decrement a string"
+    em2 = " error: target buffer is invalid"
     
     if _buff == 0x00:
         if isinstance(buff["A"], int): buff["A"] -= 1
-        else: print(em); input(en); sys.exit()
-    if _buff == 0x01:
+        else: print(em); exit()
+    elif _buff == 0x01:
         if isinstance(buff["B"], int): buff["B"] -= 1
-        else: print(em); input(en); sys.exit()
-    if _buff == 0x02:
+        else: print(em); exit()
+    elif _buff == 0x02:
         if isinstance(buff["X"], int): buff["X"] -= 1
-        else: print(em); input(en); sys.exit()
+        else: print(em); exit()
+    else:
+        print(em2); exit()
 
 def ADD():      # 0x08
     """
-    desc: adds value of register B into register A
+    desc: adds value of buffer B into buffer A
     """
-    em = " error: cannot add strings"
-    en = "press enter to exit"
+    em = " error: ADD cannot add strings, it must be values"
     
     if isinstance(buff["A"], int) and isinstance(buff["B"], int): buff["A"] += buff["B"]
-    else: print(em); input(en); sys.exit()
+    else: print(em); exit()
 
 def SUB():      # 0x09
     """
-    desc: subtracts value of register B from register A
+    desc: subtracts value of buffer B from buffer A
     """
-    em = " error: cannot subtract strings"
-    en = "press enter to exit"
+    em = " error: cannot subtract strings, it must be values"
     
     if isinstance(buff["A"], int) and isinstance(buff["B"], int): buff["A"] -= buff["B"]
-    else: print(em); input(en); sys.exit()
+    else: print(em); exit()
 
 def OUT(_buff): # 0x0A, 1 arg
     """
@@ -349,10 +408,12 @@ def OUT(_buff): # 0x0A, 1 arg
     )
     desc: outputs data of the buffer
     """
+    em = " error: target buffer is invalid"
     
-    if _buff == 0x00: print(buff["A"])
-    if _buff == 0x01: print(buff["B"])
-    if _buff == 0x02: print(buff["X"])
+    if   _buff == 0x00: print(buff["A"])
+    elif _buff == 0x01: print(buff["B"])
+    elif _buff == 0x02: print(buff["X"])
+    else: print(em); exit()
 
 def CMP(buff1, buff2, op): # 0x0B, 3 args
     """
@@ -372,20 +433,19 @@ def CMP(buff1, buff2, op): # 0x0B, 3 args
     desc: compares buff1 <op> buff2
     """
     global CMP_status
-    em1    = " error: CMP buffer1 is a string"
-    em2    = " error: CMP buffer2 is a string"
+    em1    = " error: CMP buffer1 is a string, or target buffer1 is invalid"
+    em2    = " error: CMP buffer2 is a string, or target buffer2 is invalid"
     em3    =f" error: CMP operator {hex(op)} is invalid"
-    en     = "press enter to exit"
     
     if   buff1 == 0x00 and isinstance(buff["A"], int): 0
     elif buff1 == 0x01 and isinstance(buff["B"], int): 0
     elif buff1 == 0x02 and isinstance(buff["X"], int): 0
-    else: print(em1); input(en); sys.exit()
+    else: print(em1); exit()
     
     if   buff2 == 0x00 and isinstance(buff["A"], int): 0
     elif buff2 == 0x01 and isinstance(buff["B"], int): 0
     elif buff2 == 0x02 and isinstance(buff["X"], int): 0
-    else: print(em2); input(en); sys.exit()
+    else: print(em2); exit()
     
     if   op == 0x00: 0
     elif op == 0x01: 0
@@ -393,7 +453,7 @@ def CMP(buff1, buff2, op): # 0x0B, 3 args
     elif op == 0x03: 0
     elif op == 0x04: 0
     elif op == 0x05: 0
-    else: print(em3); input(en); sys.exit()
+    else: print(em3); exit()
     
     CMP_status = do_operator(buff1, buff2, op)
 
@@ -430,21 +490,259 @@ def JSR(address):   # 0x0E, 1 arg
 def RTS():      # 0x0F
     global PC, last_JSR
     em = " error: RTS is called with no previous JSR call"
-    en = "press enter to exit"
     
     if last_JSR:
         PC = last_JSR.pop()
     else:
-        print(em); input(en); sys.exit()
+        print(em); exit()
+
+def ADDS():     # 0x10
+    """
+    desc: joins string of buffer B into buffer A
+    """
+    em = " error: ADDS cannot add values, it must be strings"
+    
+    if isinstance(buff["A"], str) and isinstance(buff["B"], str): buff["A"] += buff["B"]
+    else: print(em); exit()
+
+def OUTH(_buff):  # 0x11, 1 arg
+    """
+    _buff (
+        0x00: buffer A
+        0x01: buffer B
+        0x02: buffer X
+    )
+    desc: outputs hex value of the buffer
+    """
+    em = " error: cannot output hex buffer because it's a string, or target buffer is invalid"
+    
+    if   _buff == 0x00 and isinstance(buff["A"], int): print(hex(buff["A"]))
+    elif _buff == 0x01 and isinstance(buff["B"], int): print(hex(buff["B"]))
+    elif _buff == 0x02 and isinstance(buff["X"], int): print(hex(buff["X"]))
+    else: print(em); exit()
+
+def SWAP(_2buff): # 0x12, 1 arg
+    """
+    _2buff (
+        0x00: buffer A
+        0x01: buffer B
+    )
+    desc: swaps buffer A or B with buffer X
+    """
+    em = " error: invalid target buffer"
+    temp_buff = buff["X"]
+    
+    if   _2buff == 0x00: buff["X"] = buff["A"]; buff["A"] = temp_buff
+    elif _2buff == 0x01: buff["X"] = buff["B"]; buff["B"] = temp_buff
+    else: print(em); exit()
+
+def CLC():  # 0x13
+    """
+    desc: clears all buffers
+    """
+    buff["A"] = 0x00
+    buff["B"] = 0x00
+    buff["X"] = 0x00
+
+def AND():  # 0x14
+    """
+    desc: performs AND operation on buffer A and B
+        then stores it on buffer X
+    """
+    result = 0x00
+    em = " error: cannot perform AND operation on strings, it must be values"
+    
+    if isinstance(buff["A"], int) and isinstance(buff["B"], int): 0
+    else: exit(em)
+    
+    result    = buff["A"] & buff["B"]
+    buff["X"] = result
+
+def OR():   # 0x15
+    """
+    desc: performs OR operation on buffer A and B
+        then stores it on buffer X
+    """
+    result = 0x00
+    em = " error: cannot perform OR operation on strings, it must be values"
+    
+    if isinstance(buff["A"], int) and isinstance(buff["B"], int): 0
+    else: exit(em)
+    
+    result    = buff["A"] | buff["B"]
+    buff["X"] = result
+
+def XOR():  # 0x16
+    """
+    desc: performs XOR operation on buffer A and B
+        then stores it on buffer X
+    """
+    result = 0x00
+    em = " error: cannot perform XOR operation on strings, it must be values"
+    
+    if isinstance(buff["A"], int) and isinstance(buff["B"], int): 0
+    else: exit(em)
+    
+    result    = buff["A"] ^ buff["B"]
+    buff["X"] = result
+
+def NOT():  # 0x17
+    """
+    desc: performs NOT operation on buffer A
+        then stores it on buffer X
+    """
+    result = 0x00
+    em = " error: cannot perform NOT operation on string, it must be value"
+    
+    if isinstance(buff["A"], int): 0
+    else: exit(em)
+    
+    result    = ~ buff["A"]
+    buff["X"] = result
+
+def SHL(_buff):  # 0x18, 1 arg
+    """
+    buffer (
+        0x00: buffer A
+        0x01: buffer B
+        0x02: buffer X
+    )
+    desc: bit-shifts a buffer to the left
+    """
+    tb = chk_target_buffer(_buff)
+    em2 = " error: SHL cannot bit-shift a string, it must be value"
+    
+    if isinstance(buff[tb], int): 0
+    else: exit(em2)
+    
+    buff[tb] = buff[tb] << 1
+
+def SHR(_buff):  # 0x19, 1 arg
+    """
+    buffer (
+        0x00: buffer A
+        0x01: buffer B
+        0x02: buffer X
+    )
+    desc: bit-shifts a buffer to the right
+    """
+    tb = chk_target_buffer(_buff)
+    em = " error: SHR cannot bit-shift a string, it must be value"
+    
+    if isinstance(buff[tb], int): 0
+    else: exit(em)
+    
+    buff[tb] = buff[tb] >> 1
+
+def OUTB(_buff): # 0x1A, 1 arg
+    """
+    buffer (
+        0x00: buffer A
+        0x01: buffer B
+        0x02: buffer X
+    )
+    desc: outputs buffer in binary code
+    """
+    tb = chk_target_buffer(_buff)
+    em = " error: cannot output buffer in binary, it must be value"
+    
+    if isinstance(buff[tb], int): 0
+    else: exit(em)
+    
+    bin_str = bin(buff[tb])[2:].zfill(8)
+    print(bin_str)
+
+def IN(_buff):   # 0x1B, 1 arg
+    """
+    buffer (
+        0x00: buffer A
+        0x01: buffer B
+        0x02: buffer X
+    )
+    desc: takes input of user and puts it in buffer
+    """
+    tb = chk_target_buffer(_buff)
+    em = " error: invalid target buffer"
+    
+    #try to store it as hex value, otherwise store it as string
+    buff[tb] = tryhex(input("input: "))
+
+def PAUSE(_buff): # 0x1C, 1 arg
+    """
+    buffer (
+        0x00: buffer A
+        0x01: buffer B
+        0x02: buffer X
+    )
+    desc: pauses CPU for <buffer> seconds
+    """
+    tb = chk_target_buffer(_buff)
+    em = " error: target buffer is not a value, cannot PAUSE"
+    
+    if isinstance(buff[tb], int):
+        if debug_mode == 0x01: f"debug: pausing CPU for {buff[tb]} seconds"
+        time.sleep(buff[tb])
+    else: exit(em)
+
+def RAND():     # 0x1D
+    """
+    min: buffer A
+    max: buffer B
+    desc: takes min and max range and then rolls random value
+        then puts it in buffer X
+    """
+    _min = buff["A"]
+    _max = buff["B"]
+    _out = buff["X"]
+    em  = " error: min or max is string, must be value"
+    em2 = " error: max is less than min"
+    em3 = " error: min and max both have same value"
+    
+    if isinstance(_min, int) and isinstance(_max, int): 0
+    else: exit(em)
+    
+    if   _max < _min:  exit(em2)
+    elif _max == _min: exit(em3)
+    else:
+        _out      = random.randint(_min, _max)
+        buff["X"] = _out
+
+def BEEP(loc, freq, dur): # 0x1E, 3 args
+    """
+    loc (
+        0x00: rodata
+        0x01: bss
+    )
+    freq: <address>
+    dur:  <address>
+    desc: plays a beep sound for <duration> miliseconds at <frequency> Hz
+    """
+    em = " error: min or max is a string, not value"
+    
+    chk_status = chk_address(loc, freq)
+    chk()
+    chk_status = chk_address(loc, dur)
+    chk()
+    
+    freq_ = get_address_data(loc, freq)
+    dur_  = get_address_data(loc, dur)
+    
+    if isinstance(freq_, int) and isinstance(dur_, int): 0
+    else: exit(em)
+    
+    if debug_mode == 0x01:
+        print(f"debug: BEEP played, freq: {freq_}Hz, dur: {dur_}ms")
+    
+    beep(freq_, dur_)
+
+def HLT():      # 0x1F
+    """
+    desc: halt CPU
+    """
+    exit()
 
 #check:
 ## it makes sure you setted up rodata and bss correctly
-def trylen(data):
-    try:
-        return len(data)
-    except:
-        return 1
-
 def check():
     global rodata, bss, rodata_size, bss_size
     errors = 0
@@ -519,44 +817,15 @@ def check():
 chk_status = check()
 chk()
 
-def tryhex(data):
-    try:
-        return hex(data)
-    except:
-        return str(data)
-
-# your code to execute:
-## it's strongly recommended that you write lines of code like this:
-## <opcode> <its arguments>
-## (put multiple indexes in one line)
-code = [
-    ## main:
-        0x00, 0x00, 0x0000, # LDA rodata 0x0000
-        0x01, 0x00, 0x0001, # LDB rodata 0x0001
-        0x0E, 0x000D,       # JSR math_sub
-        
-        0x02, 0x01, 0x0000, # LDX bss 0x0000
-        0x0A, 0x02,         # OUT X
-        0x0C, 0xFFFF,       # JMP EXIT
-    
-    ## math_sub:
-        0x08,               # ADD
-        0x03, 0x0000,       # STA bss 0x0000
-        0x01, 0x00, 0x0002, # LDB rodata 0x0002
-        0x0B, 0x00, 0x01, 0x02, # CMP A > B
-        0x0D, 0x001B,   # JC extra_inc
-        0x0F,           # RTS
-    
-    ## extra_inc:
-        0x06, 0x00, # INC A
-        0x0F,       # RTS
-]
-
 prev_PC = 0x0000
 
 while PC < len(code):
     prev_PC = PC
     i = code[PC]
+    
+    if debug_mode == 0x01:
+        print(f"debug: ran instruction {hex(i)} at PC={hex(PC)}")
+    
     if i == 0x00:   LDA(code[PC+1], code[PC+2]); PC += 3
     elif i == 0x01: LDB(code[PC+1], code[PC+2]); PC += 3
     elif i == 0x02: LDX(code[PC+1], code[PC+2]); PC += 3
@@ -581,10 +850,27 @@ while PC < len(code):
     elif i == 0x0F:
         if debug_mode == 0x01: print(f"debug: RTS back to where JSR was last called")
         RTS()
+    elif i == 0x10: ADDS(); PC += 1
+    elif i == 0x11: OUTH(code[PC+1]); PC += 2
+    elif i == 0x12: SWAP(code[PC+1]); PC += 2
+    elif i == 0x13: CLC(); PC += 1
+    elif i == 0x14: AND(); PC += 1
+    elif i == 0x15: OR();  PC += 1
+    elif i == 0x16: XOR(); PC += 1
+    elif i == 0x17: NOT(); PC += 1
+    elif i == 0x18: SHL(code[PC+1]); PC += 2
+    elif i == 0x19: SHR(code[PC+1]); PC += 2
+    elif i == 0x1A: OUTB(code[PC+1]); PC += 2
+    elif i == 0x1B: IN(code[PC+1]); PC += 2
+    elif i == 0x1C: PAUSE(code[PC+1]); PC += 2
+    elif i == 0x1D: RAND(); PC += 1
+    elif i == 0x1E: BEEP(code[PC+1], code[PC+2], code[PC+3]); PC += 4
+    elif i == 0x1F: HLT(); PC += 1
     else:
         print(f" fatal error: invalid instruction {hex(i)}")
-        input("press enter to exit")
-        sys.exit()
+        exit()
+    
+    chk_buffers_size()
     
     A  = buff["A"]
     B  = buff["B"]
@@ -592,17 +878,11 @@ while PC < len(code):
     
     if debug_mode == 0x1:
         #for debug, print all buffers and more
-        print(f"debug: ran instruction {hex(i)}")
         print(f"debug: compare status {hex(CMP_status)}")
         print(f"debug: A  = {tryhex(A)}" )
         print(f"debug: B  = {tryhex(B)}" )
         print(f"debug: X  = {tryhex(X)}" )
-        print(f"debug: PC = {hex(PC-1)}" )
-    
-    if prev_PC == PC:
-        print(f" CPU halted at PC={hex(PC)}")
-        input("press enter to exit")
-        sys.exit()
+        print(f"debug: PC = {hex(PC)}"   )
 
 print(" end of execution")
-input("press enter to exit")
+exit()

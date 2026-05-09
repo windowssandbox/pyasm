@@ -37,3 +37,45 @@
     then returns PC back to line where last JSR is called
 0x0E: JSR <address>
 0x0F: RTS
+
+// ADDS: joins string of buffer B into buffer A
+0x10: ADDS
+
+// OUTH: outputs hex value of the buffer
+0x11: OUTH <buffer>
+
+// SWAP: swaps buffer A or B with buffer X
+0x12: SWAP <buffer>
+
+// CLC: clears all buffers
+0x13: CLC
+
+// bitwise operators: performs bitwise operation on buffer A and B then stores it on buffer X
+0x14: AND
+0x15: OR
+0x16: XOR
+0x17: NOT (performs on buffer A only)
+
+// bit shifts: bit-shifts a buffer
+0x18: SHL <buffer> (left)
+0x19: SHR <buffer> (right)
+
+// OUTB: outputs buffer in binary code
+0x1A: OUTB <buffer>
+
+// IN: takes input of user and puts it in buffer
+0x1B: IN <buffer>
+
+// PAUSE: pauses CPU for <buffer> seconds
+0x1C: PAUSE <buffer>
+
+// RAND: takes min (buffer A) and max (buffer B) range
+	then rolls random value
+	then puts it in buffer X
+0x1D: RAND
+
+// BEEP: plays a beep sound for <duration> seconds at <frequency> Hz
+0x1E: BEEP <loc, 0x00: rodata, 0x01: bss> <frequency> <duration>
+
+// HLT: halt CPU
+0x1F: HLT
