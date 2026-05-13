@@ -21,7 +21,7 @@ last_JSR = []
 rodata_size = 0xFFFF # (default: 0xFFFF 2kb)
 bss_size    = 0xFFFF # (default: 0xFFFF 2kb)
 buff_size   = 0xFF   # (default: 0xFF bytes) for each buffer
-debug_mode  = 0x1    # (default: 0x0, recommended: 0x1)
+debug_mode  = 0x0    # (default: 0x0, recommended: 0x1)
 
 #rom data
 """
@@ -242,6 +242,9 @@ def do_operator(buff1, buff2, op):
         if op == 0x04: return buff["X"] >= buff["X"]
         if op == 0x05: return buff["X"] <= buff["X"]
 
+def val_8bit(val):
+    return (val & 0xFF)
+
 #instructions
 def LDA(loc, address):  # 0x00, 2 args
     """
@@ -299,10 +302,19 @@ def STA(address):       # 0x03, 1 arg
     address: <hex>
     desc: store
     """
+    size_address     = bss[address]["size"]
+    data_address     = bss[address]["data"]
+    len_data_address = trylen(buff["A"])
+    em = f" error: cannot fit string (size: {len_data_address}) inside bss {address} (size: {size_address})"
     
     #check if address points to valid one in bss
     chk_status = chk_address(0x1, address)
     chk()
+
+    #check for string overflow
+    if isinstance(buff["A"], str) and isinstance(data_address, str):
+        if len_data_address <= size_address: 0
+        else: exit(em)
     
     #store buffer A into that address data
     set_address_data(buff["A"], address)
@@ -312,10 +324,19 @@ def STB(address):       # 0x04, 1 arg
     address: <hex>
     desc: store
     """
+    size_address     = bss[address]["size"]
+    data_address     = bss[address]["data"]
+    len_data_address = trylen(buff["B"])
+    em = f" error: cannot fit string (size: {len_data_address}) inside bss {address} (size: {size_address})"
     
     #check if address points to valid one in bss
     chk_status = chk_address(0x1, address)
     chk()
+    
+    #check for string overflow
+    if isinstance(buff["B"], str) and isinstance(data_address, str):
+        if len_data_address <= size_address: 0
+        else: exit(em)
     
     #store buffer B into that address data
     set_address_data(buff["B"], address)
@@ -325,10 +346,19 @@ def STX(address):       # 0x05, 1 arg
     address: <hex>
     desc: store
     """
+    size_address     = bss[address]["size"]
+    data_address     = bss[address]["data"]
+    len_data_address = trylen(buff["X"])
+    em = f" error: cannot fit string (size: {len_data_address}) inside bss {address} (size: {size_address})"
     
     #check if address points to valid one in bss
     chk_status = chk_address(0x1, address)
     chk()
+    
+    #check for string overflow
+    if isinstance(buff["X"], str) and isinstance(data_address, str):
+        if len_data_address <= size_address: 0
+        else: exit(em)
     
     #store buffer X into that address data
     set_address_data(buff["X"], address)
@@ -343,19 +373,13 @@ def INC(_buff): # 0x06, 1 arg
     desc: increment
     """
     em  = " error: cannot increment a string"
-    em2 = " error: target buffer is invalid"
     
-    if _buff == 0x00:
-        if isinstance(buff["A"], int): buff["A"] += 1
-        else: print(em); exit()
-    elif _buff == 0x01:
-        if isinstance(buff["B"], int): buff["B"] += 1
-        else: print(em); exit()
-    elif _buff == 0x02:
-        if isinstance(buff["X"], int): buff["X"] += 1
-        else: print(em); exit()
-    else:
-        print(em2); exit()
+    tb = chk_target_buffer(_buff)
+    
+    if isinstance(buff[tb], int):
+        buff[tb] += 0x01
+        buff[tb] = val_8bit(buff[tb])
+    else: exit(em)
 
 def DEC(_buff): # 0x07, 1 arg
     """
@@ -365,21 +389,15 @@ def DEC(_buff): # 0x07, 1 arg
         0x02: buffer X
     )
     desc: decrement
-    """
+    """    
     em  = " error: cannot decrement a string"
-    em2 = " error: target buffer is invalid"
     
-    if _buff == 0x00:
-        if isinstance(buff["A"], int): buff["A"] -= 1
-        else: print(em); exit()
-    elif _buff == 0x01:
-        if isinstance(buff["B"], int): buff["B"] -= 1
-        else: print(em); exit()
-    elif _buff == 0x02:
-        if isinstance(buff["X"], int): buff["X"] -= 1
-        else: print(em); exit()
-    else:
-        print(em2); exit()
+    tb = chk_target_buffer(_buff)
+    
+    if isinstance(buff[tb], int):
+        buff[tb] -= 0x01
+        buff[tb] = val_8bit(buff[tb])
+    else: exit(em)
 
 def ADD():      # 0x08
     """
@@ -387,8 +405,10 @@ def ADD():      # 0x08
     """
     em = " error: ADD cannot add strings, it must be values"
     
-    if isinstance(buff["A"], int) and isinstance(buff["B"], int): buff["A"] += buff["B"]
-    else: print(em); exit()
+    if isinstance(buff["A"], int) and isinstance(buff["B"], int):
+        buff["A"] += buff["B"]
+        buff["A"] = val_8bit(buff["A"])
+    else: exit(em)
 
 def SUB():      # 0x09
     """
@@ -396,8 +416,10 @@ def SUB():      # 0x09
     """
     em = " error: cannot subtract strings, it must be values"
     
-    if isinstance(buff["A"], int) and isinstance(buff["B"], int): buff["A"] -= buff["B"]
-    else: print(em); exit()
+    if isinstance(buff["A"], int) and isinstance(buff["B"], int):
+        buff["A"] -= buff["B"]
+        buff["A"] = val_8bit(buff["A"])
+    else: exit(em)
 
 def OUT(_buff): # 0x0A, 1 arg
     """
@@ -408,12 +430,9 @@ def OUT(_buff): # 0x0A, 1 arg
     )
     desc: outputs data of the buffer
     """
-    em = " error: target buffer is invalid"
+    tb = chk_target_buffer(_buff)
     
-    if   _buff == 0x00: print(buff["A"])
-    elif _buff == 0x01: print(buff["B"])
-    elif _buff == 0x02: print(buff["X"])
-    else: print(em); exit()
+    print(buff[tb])
 
 def CMP(buff1, buff2, op): # 0x0B, 3 args
     """
@@ -503,7 +522,7 @@ def ADDS():     # 0x10
     em = " error: ADDS cannot add values, it must be strings"
     
     if isinstance(buff["A"], str) and isinstance(buff["B"], str): buff["A"] += buff["B"]
-    else: print(em); exit()
+    else: exit(em)
 
 def OUTH(_buff):  # 0x11, 1 arg
     """
@@ -514,12 +533,11 @@ def OUTH(_buff):  # 0x11, 1 arg
     )
     desc: outputs hex value of the buffer
     """
-    em = " error: cannot output hex buffer because it's a string, or target buffer is invalid"
+    em = " error: cannot output hex buffer because it's a string"
+    tb = chk_target_buffer(_buff)
     
-    if   _buff == 0x00 and isinstance(buff["A"], int): print(hex(buff["A"]))
-    elif _buff == 0x01 and isinstance(buff["B"], int): print(hex(buff["B"]))
-    elif _buff == 0x02 and isinstance(buff["X"], int): print(hex(buff["X"]))
-    else: print(em); exit()
+    if isinstance(buff[tb], int): print(hex(buff[tb]))
+    else: exit(em)
 
 def SWAP(_2buff): # 0x12, 1 arg
     """
@@ -529,7 +547,7 @@ def SWAP(_2buff): # 0x12, 1 arg
     )
     desc: swaps buffer A or B with buffer X
     """
-    em = " error: invalid target buffer"
+    em = " error: SWAP invalid target buffer, must be A or B"
     temp_buff = buff["X"]
     
     if   _2buff == 0x00: buff["X"] = buff["A"]; buff["A"] = temp_buff
@@ -616,6 +634,7 @@ def SHL(_buff):  # 0x18, 1 arg
     else: exit(em2)
     
     buff[tb] = buff[tb] << 1
+    buff[tb] = val_8bit(buff[tb])
 
 def SHR(_buff):  # 0x19, 1 arg
     """
@@ -633,6 +652,7 @@ def SHR(_buff):  # 0x19, 1 arg
     else: exit(em)
     
     buff[tb] = buff[tb] >> 1
+    buff[tb] = val_8bit(buff[tb])
 
 def OUTB(_buff): # 0x1A, 1 arg
     """
@@ -662,7 +682,6 @@ def IN(_buff):   # 0x1B, 1 arg
     desc: takes input of user and puts it in buffer
     """
     tb = chk_target_buffer(_buff)
-    em = " error: invalid target buffer"
     
     #try to store it as hex value, otherwise store it as string
     buff[tb] = tryhex(input("input: "))
@@ -754,6 +773,10 @@ def check():
         ap_size = ap["size"]
         ap_data = ap["data"]
         
+        if ap_size == 0x0: #size check
+            print(f" rodata error: size of address {hex(ap_addr)} is 0x0")
+            errors += 1
+        
         if ap_addr > rodata_size: #bounds check
             new_rodata_size = rodata_size + abs(rodata_size-ap_addr)
             print(f" rodata error: address pointer {hex(ap_addr)} is out of bounds of rodata_size {hex(rodata_size)}")
@@ -776,6 +799,17 @@ def check():
             print(f" rodata error: size in address {hex(ap_addr)} doesn't match actual size of data")
             print(f"|SUGGESTED FIX: change size of rodata address {hex(ap_addr)} to {hex(actual_ap_size)}")
             errors += 1
+        
+        #check if the variable is within 8bit
+        if isinstance(ap_data, int):
+            if ap_data <= 0xFF: 0
+            else:
+                print(f" rodata error: value in address {hex(ap_addr)} must be 8-bit")
+                errors += 1
+            
+            #warning for unused occupied space
+            if ap_size > 0x1:
+                print(f" rodata warning: size of value address {hex(ap_addr)} has unused occupied space that is {hex(ap_size-1)} byte(s) large")
     
     ## bss
     for i in range(len(bss)):
@@ -783,6 +817,10 @@ def check():
         ap_addr = ap["addr"]
         ap_size = ap["size"]
         ap_data = ap["data"]
+        
+        if ap_size == 0x0: #size check
+            print(f" bss error: size of address {hex(ap_addr)} is 0x0")
+            errors += 1
         
         if ap_addr > bss_size: #bounds check
             new_bss_size = bss_size + abs(bss_size-ap_addr)
@@ -806,6 +844,17 @@ def check():
             print(f" bss error: size in address {hex(ap_addr)} doesn't match actual size of data")
             print(f"|SUGGESTED FIX: change size of bss address {hex(ap_addr)} to {hex(actual_ap_size)}")
             errors += 1
+        
+        #check if the variable is within 8bit
+        if isinstance(ap_data, int):
+            if ap_data <= 0xFF: 0
+            else:
+                print(f" bss error: value in address {hex(ap_addr)} must be 8-bit")
+                errors += 1
+            
+            #warning for unused occupied space
+            if ap_size > 0x1:
+                print(f" bss warning: size of value address {hex(ap_addr)} has unused occupied space that is {hex(ap_size-1)} byte(s) large")
     
     ## check if there are errors:
     if errors > 0:
