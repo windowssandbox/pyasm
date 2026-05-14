@@ -176,71 +176,15 @@ def set_address_data(data, address):
             return
 
 def do_operator(buff1, buff2, op):
-    if buff1 == 0x00 and buff2 == 0x00:
-        if op == 0x00: return buff["A"] == buff["A"]
-        if op == 0x01: return buff["A"] != buff["A"]
-        if op == 0x02: return buff["A"] >  buff["A"]
-        if op == 0x03: return buff["A"] <  buff["A"]
-        if op == 0x04: return buff["A"] >= buff["A"]
-        if op == 0x05: return buff["A"] <= buff["A"]
-    elif buff1 == 0x01 and buff2 == 0x00:
-        if op == 0x00: return buff["B"] == buff["A"]
-        if op == 0x01: return buff["B"] != buff["A"]
-        if op == 0x02: return buff["B"] >  buff["A"]
-        if op == 0x03: return buff["B"] <  buff["A"]
-        if op == 0x04: return buff["B"] >= buff["A"]
-        if op == 0x05: return buff["B"] <= buff["A"]
-    elif buff1 == 0x02 and buff2 == 0x00:
-        if op == 0x00: return buff["X"] == buff["A"]
-        if op == 0x01: return buff["X"] != buff["A"]
-        if op == 0x02: return buff["X"] >  buff["A"]
-        if op == 0x03: return buff["X"] <  buff["A"]
-        if op == 0x04: return buff["X"] >= buff["A"]
-        if op == 0x05: return buff["X"] <= buff["A"]
+    tb1 = chk_target_buffer(buff1)
+    tb2 = chk_target_buffer(buff2)
     
-    elif buff1 == 0x00 and buff2 == 0x01:
-        if op == 0x00: return buff["A"] == buff["B"]
-        if op == 0x01: return buff["A"] != buff["B"]
-        if op == 0x02: return buff["A"] >  buff["B"]
-        if op == 0x03: return buff["A"] <  buff["B"]
-        if op == 0x04: return buff["A"] >= buff["B"]
-        if op == 0x05: return buff["A"] <= buff["B"]
-    elif buff1 == 0x01 and buff2 == 0x01:
-        if op == 0x00: return buff["B"] == buff["B"]
-        if op == 0x01: return buff["B"] != buff["B"]
-        if op == 0x02: return buff["B"] >  buff["B"]
-        if op == 0x03: return buff["B"] <  buff["B"]
-        if op == 0x04: return buff["B"] >= buff["B"]
-        if op == 0x05: return buff["B"] <= buff["B"]
-    elif buff1 == 0x02 and buff2 == 0x01:
-        if op == 0x00: return buff["X"] == buff["B"]
-        if op == 0x01: return buff["X"] != buff["B"]
-        if op == 0x02: return buff["X"] >  buff["B"]
-        if op == 0x03: return buff["X"] <  buff["B"]
-        if op == 0x04: return buff["X"] >= buff["B"]
-        if op == 0x05: return buff["X"] <= buff["B"]
-    
-    elif buff1 == 0x00 and buff2 == 0x02:
-        if op == 0x00: return buff["A"] == buff["X"]
-        if op == 0x01: return buff["A"] != buff["X"]
-        if op == 0x02: return buff["A"] >  buff["X"]
-        if op == 0x03: return buff["A"] <  buff["X"]
-        if op == 0x04: return buff["A"] >= buff["X"]
-        if op == 0x05: return buff["A"] <= buff["X"]
-    elif buff1 == 0x01 and buff2 == 0x02:
-        if op == 0x00: return buff["B"] == buff["X"]
-        if op == 0x01: return buff["B"] != buff["X"]
-        if op == 0x02: return buff["B"] >  buff["X"]
-        if op == 0x03: return buff["B"] <  buff["X"]
-        if op == 0x04: return buff["B"] >= buff["X"]
-        if op == 0x05: return buff["B"] <= buff["X"]
-    elif buff1 == 0x02 and buff2 == 0x02:
-        if op == 0x00: return buff["X"] == buff["X"]
-        if op == 0x01: return buff["X"] != buff["X"]
-        if op == 0x02: return buff["X"] >  buff["X"]
-        if op == 0x03: return buff["X"] <  buff["X"]
-        if op == 0x04: return buff["X"] >= buff["X"]
-        if op == 0x05: return buff["X"] <= buff["X"]
+    if op == 0x00: return buff[tb1] == buff[tb2]
+    if op == 0x01: return buff[tb1] != buff[tb2]
+    if op == 0x02: return buff[tb1] >  buff[tb2]
+    if op == 0x03: return buff[tb1] <  buff[tb2]
+    if op == 0x04: return buff[tb1] >= buff[tb2]
+    if op == 0x05: return buff[tb1] <= buff[tb2]
 
 def val_8bit(val):
     return (val & 0xFF)
@@ -866,10 +810,7 @@ def check():
 chk_status = check()
 chk()
 
-prev_PC = 0x0000
-
 while PC < len(code):
-    prev_PC = PC
     i = code[PC]
     
     if debug_mode == 0x01:
