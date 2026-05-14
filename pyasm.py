@@ -1,5 +1,6 @@
 import sys
 import random
+import tkinter as tk
 
 try:    #try importing all required packages
     from beep import beep
@@ -16,12 +17,15 @@ chk_status = False
 CMP_status = False
 PC = 0x0
 last_JSR = []
+internal_res = 256
+res_scale = 3
+pen_active = 0x0
 
 #modifiers
 rodata_size = 0xFFFF # (default: 0xFFFF 2kb)
 bss_size    = 0xFFFF # (default: 0xFFFF 2kb)
 buff_size   = 0xFF   # (default: 0xFF bytes) for each buffer
-debug_mode  = 0x0    # (default: 0x0, recommended: 0x1)
+debug_mode  = 0x1    # (default: 0x0, recommended: 0x1)
 
 #rom data
 """
@@ -65,7 +69,7 @@ bss = {
 
 # your code to execute:
 ## it's strongly recommended that you write lines of code like this:
-## <opcode>, <its arguments>, # (instruction in text format)
+## <opcode>, <its arguments>, # <PC>: (instruction in text format)
 ## (put multiple indexes in one line)
 code = [
     ## main: 0x00
@@ -77,14 +81,78 @@ buff = {
     "A": 0x00,
     "B": 0x00,
     "X": 0x00,
+    "Y": 0x00,
 }
 
-#check for main
 def exit(msg=""):
     if not msg == "": print(msg)
     input("press enter to exit")
     sys.exit()
 
+#PICTURE PROCESSING UNIT (PPU)
+class PPU:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("PPU")
+        self.running = True
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.root.resizable(False, False)
+        self.canvas = tk.Canvas(
+            self.root,
+            width  = internal_res * res_scale,
+            height = internal_res * res_scale,
+            bg = "black",
+            highlightthickness = 0,
+        )
+        self.canvas.pack()
+        self.pen_x    = 0x00
+        self.pen_y    = 0x00
+        self.pen_down = 0x0
+        self.color    = "#FFFFFF"
+        self.cur_line = None
+    
+    def on_closing(self):
+        self.running = False
+        self.root.destroy()
+    
+    def update_frame(self):
+        if self.running:
+            try:
+                self.root.update_idletasks()
+                self.root.update()
+            except:
+                self.running = False
+    
+    def set_color(self, val):
+        hex_val = f"{val:02x}"
+        self.color = f"#{hex_val}{hex_val}{hex_val}"
+    
+    def move_pen(self, x, y):
+        old_x = self.pen_x
+        old_y = self.pen_y
+        
+        if self.pen_down:
+            self.canvas.create_line(
+                old_x * res_scale,
+                old_y * res_scale,
+                x * res_scale,
+                y * res_scale,
+                fill = self.color,
+                width = res_scale,
+            )
+        
+        self.pen_x = x
+        self.pen_y = y
+    
+    def clear_screen(self):
+        self.canvas.delete("all")
+        self.pen_x = 0
+        self.pen_y = 0
+        self.pen_down = 0x0
+
+ppu = PPU()
+
+#check for main
 def chk():
     global chk_status
     if chk_status == False:
@@ -109,19 +177,23 @@ def chk_buffers_size():
     As = trylen(buff["A"])
     Bs = trylen(buff["B"])
     Xs = trylen(buff["X"])
+    Ys = trylen(buff["Y"])
     
     Fer = " fatal error:"
     Aem = f" {Fer} buffer A overflowed by {hex(As-buff_size)} bytes"
     Bem = f" {Fer} buffer B overflowed by {hex(Bs-buff_size)} bytes"
     Xem = f" {Fer} buffer X overflowed by {hex(Xs-buff_size)} bytes"
+    Yem = f" {Fer} buffer Y overflowed by {hex(Ys-buff_size)} bytes"
     sf  = f"|SUGGESTED FIX: expand buff_size to {hex(new_buff_size)} bytes"
     
     if As <= buff_size: 0
-    else: print(Aem); new_buff_size = buff_size+As; print(sf); exit()
+    else: print(Aem); new_buff_size = buff_size+As; exit(sf)
     if Bs <= buff_size: 0
-    else: print(Bem); new_buff_size = buff_size+Bs; print(sf); exit()
+    else: print(Bem); new_buff_size = buff_size+Bs; exit(sf)
     if Xs <= buff_size: 0
-    else: print(Xem); new_buff_size = buff_size+Xs; print(sf); exit()
+    else: print(Xem); new_buff_size = buff_size+Xs; exit(sf)
+    if Ys <= buff_size: 0
+    else: print(Yem); new_buff_size = buff_size+Ys; exit(sf)
 
 def chk_target_buffer(_buff):
     tb = "."
@@ -130,6 +202,7 @@ def chk_target_buffer(_buff):
     if   _buff == 0x00: tb = "A"
     elif _buff == 0x01: tb = "B"
     elif _buff == 0x02: tb = "X"
+    elif _buff == 0x03: tb = "Y"
     else: exit(em)
     
     return tb
@@ -313,6 +386,7 @@ def INC(_buff): # 0x06, 1 arg
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: increment
     """
@@ -331,6 +405,7 @@ def DEC(_buff): # 0x07, 1 arg
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: decrement
     """    
@@ -371,6 +446,7 @@ def OUT(_buff): # 0x0A, 1 arg
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: outputs data of the buffer
     """
@@ -384,6 +460,7 @@ def CMP(buff1, buff2, op): # 0x0B, 3 args
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     op (
         0x00: ==
@@ -396,27 +473,21 @@ def CMP(buff1, buff2, op): # 0x0B, 3 args
     desc: compares buff1 <op> buff2
     """
     global CMP_status
-    em1    = " error: CMP buffer1 is a string, or target buffer1 is invalid"
-    em2    = " error: CMP buffer2 is a string, or target buffer2 is invalid"
+    em1    = " error: CMP buffer1 is a string"
+    em2    = " error: CMP buffer2 is a string"
     em3    =f" error: CMP operator {hex(op)} is invalid"
     
-    if   buff1 == 0x00 and isinstance(buff["A"], int): 0
-    elif buff1 == 0x01 and isinstance(buff["B"], int): 0
-    elif buff1 == 0x02 and isinstance(buff["X"], int): 0
-    else: print(em1); exit()
+    tb1 = chk_target_buffer(buff1)
+    tb2 = chk_target_buffer(buff2)
     
-    if   buff2 == 0x00 and isinstance(buff["A"], int): 0
-    elif buff2 == 0x01 and isinstance(buff["B"], int): 0
-    elif buff2 == 0x02 and isinstance(buff["X"], int): 0
-    else: print(em2); exit()
+    if isinstance(buff[tb1], int): 0
+    else: exit(em1)
     
-    if   op == 0x00: 0
-    elif op == 0x01: 0
-    elif op == 0x02: 0
-    elif op == 0x03: 0
-    elif op == 0x04: 0
-    elif op == 0x05: 0
-    else: print(em3); exit()
+    if isinstance(buff[tb2], int): 0
+    else: exit(em2)
+    
+    if op <= 0x05: 0
+    else: exit(em3)
     
     CMP_status = do_operator(buff1, buff2, op)
 
@@ -455,9 +526,11 @@ def RTS():      # 0x0F
     em = " error: RTS is called with no previous JSR call"
     
     if last_JSR:
-        PC = last_JSR.pop()
+        new_PC = last_JSR.pop()
+        if debug_mode == 0x01: print(f"debug: RTS back to where JSR was last called at PC={hex(new_PC)}")
+        PC = new_PC
     else:
-        print(em); exit()
+        exit(em)
 
 def ADDS():     # 0x10
     """
@@ -474,6 +547,7 @@ def OUTH(_buff):  # 0x11, 1 arg
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: outputs hex value of the buffer
     """
@@ -483,20 +557,29 @@ def OUTH(_buff):  # 0x11, 1 arg
     if isinstance(buff[tb], int): print(hex(buff[tb]))
     else: exit(em)
 
-def SWAP(_2buff): # 0x12, 1 arg
+def SWAP(_2buff, _2tb): # 0x12, 1 arg
     """
     _2buff (
         0x00: buffer A
         0x01: buffer B
     )
-    desc: swaps buffer A or B with buffer X
+    _2tb (
+        0x00: buffer X
+        0x01: buffer Y
+    )
+    desc: swaps buffer A or B with buffer X or Y
     """
-    em = " error: SWAP invalid target buffer, must be A or B"
-    temp_buff = buff["X"]
+    em1 = " error: SWAP invalid target buffer #1, must be A or B"
+    em2 = " error: SWAP invalid target buffer #2, must be X or Y"
+    tb  = "."
     
-    if   _2buff == 0x00: buff["X"] = buff["A"]; buff["A"] = temp_buff
-    elif _2buff == 0x01: buff["X"] = buff["B"]; buff["B"] = temp_buff
-    else: print(em); exit()
+    if   _2tb == 0x00: temp_buff = buff["X"]; tb = "X"
+    elif _2tb == 0x01: temp_buff = buff["Y"]; tb = "Y"
+    else: exit(em2)
+    
+    if   _2buff == 0x00: buff[tb] = buff["A"]; buff["A"] = temp_buff
+    elif _2buff == 0x01: buff[tb] = buff["B"]; buff["B"] = temp_buff
+    else: exit(em1)
 
 def CLC():  # 0x13
     """
@@ -505,6 +588,7 @@ def CLC():  # 0x13
     buff["A"] = 0x00
     buff["B"] = 0x00
     buff["X"] = 0x00
+    buff["Y"] = 0x00
 
 def AND():  # 0x14
     """
@@ -568,6 +652,7 @@ def SHL(_buff):  # 0x18, 1 arg
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: bit-shifts a buffer to the left
     """
@@ -586,6 +671,7 @@ def SHR(_buff):  # 0x19, 1 arg
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: bit-shifts a buffer to the right
     """
@@ -604,6 +690,7 @@ def OUTB(_buff): # 0x1A, 1 arg
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: outputs buffer in binary code
     """
@@ -622,6 +709,7 @@ def IN(_buff):   # 0x1B, 1 arg
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: takes input of user and puts it in buffer
     """
@@ -630,12 +718,13 @@ def IN(_buff):   # 0x1B, 1 arg
     #try to store it as hex value, otherwise store it as string
     buff[tb] = tryhex(input("input: "))
 
-def PAUSE(_buff): # 0x1C, 1 arg
+def WAIT(_buff): # 0x1C, 1 arg
     """
     buffer (
         0x00: buffer A
         0x01: buffer B
         0x02: buffer X
+        0x03: buffer Y
     )
     desc: pauses CPU for <buffer> seconds
     """
@@ -703,6 +792,108 @@ def HLT():      # 0x1F
     desc: halt CPU
     """
     exit()
+
+def LDY(loc, address):  # 0x20, 2 args
+    """
+    loc: (
+        0x00: rodata
+        0x01: bss
+    )
+    address: <hex>
+    desc: load
+    """
+    
+    #check if that address points to valid variable
+    chk_status = chk_address(loc, address)
+    chk()
+    
+    #then load that data to buffer Y
+    buff["Y"] = get_address_data(loc, address)
+
+def STY(address):       # 0x21, 1 arg
+    """
+    address: <hex>
+    desc: store
+    """
+    size_address     = bss[address]["size"]
+    data_address     = bss[address]["data"]
+    len_data_address = trylen(buff["Y"])
+    em = f" error: cannot fit string (size: {len_data_address}) inside bss {address} (size: {size_address})"
+    
+    #check if address points to valid one in bss
+    chk_status = chk_address(0x1, address)
+    chk()
+    
+    #check for string overflow
+    if isinstance(buff["Y"], str) and isinstance(data_address, str):
+        if len_data_address <= size_address: 0
+        else: exit(em)
+    
+    #store buffer Y into that address data
+    set_address_data(buff["Y"], address)
+
+def PNE():  # 0x22
+    global pen_active
+    pen_active = True
+
+def PTO():  # 0x23
+    global pen_active
+    em = " PPU error: pen is not active yet"
+    
+    if pen_active:
+        em2 = " PPU error: buffer X or Y is not value"
+        
+        if isinstance(buff["X"], int) and isinstance(buff["Y"], int): 0
+        else: exit(em)
+        
+        ppu.move_pen(buff["X"], buff["Y"])
+    else: exit(em)
+
+def PDW():  # 0x24
+    global pen_active
+    em = " PPU error: pen is not active yet"
+    
+    if pen_active:
+        ppu.pen_down = 0x1
+    else: exit(em)
+
+def PUP():  # 0x25
+    global pen_active
+    em = " PPU error: pen is not active yet"
+    
+    if pen_active:
+        ppu.pen_down = 0x0
+    else: exit(em)
+
+def PCO(_buff):  # 0x26
+    global pen_active
+    em = " PPU error: pen is not active yet"
+    
+    if pen_active:
+        em2 = " PPU error: target buffer is not value"
+        tb = chk_target_buffer(_buff)
+        
+        if isinstance(buff[tb], int): 0
+        else: exit(em2)
+        
+        ppu.set_color(buff[tb])
+    else: exit(em)
+
+def PDO():  # 0x27
+    global pen_active
+    pen_active = False
+    ppu.pen_down = 0x0
+    ppu.move_pen(0x00, 0x00)
+
+def USC():  # 0x28
+    global pen_active
+    em = " PPU error: attempted to update frame while pen is active"
+    
+    if not pen_active: ppu.update_frame()
+    else: exit(em)
+
+def CLS():  # 0x29
+    ppu.clear_screen()
 
 #check:
 ## it makes sure you setted up rodata and bss correctly
@@ -810,11 +1001,60 @@ def check():
 chk_status = check()
 chk()
 
+#instruction list for debug message "ran instruction"
+i_names = {
+    0x00: "LDA",
+    0x01: "LDB",
+    0x02: "LDX",
+    0x03: "STA",
+    0x04: "STB",
+    0x05: "STX",
+    0x06: "INC",
+    0x07: "DEC",
+    0x08: "ADD",
+    0x09: "SUB",
+    0x0A: "OUT",
+    0x0B: "CMP",
+    0x0C: "JMP",
+    0x0D: "JC",
+    0x0E: "JSR",
+    0x0F: "RTS",
+    0x10: "ADDS",
+    0x11: "OUTH",
+    0x12: "SWAP",
+    0x13: "CLC",
+    0x14: "AND",
+    0x15: "OR",
+    0x16: "XOR",
+    0x17: "NOT",
+    0x18: "SHL",
+    0x19: "SHR",
+    0x1A: "OUTB",
+    0x1B: "IN",
+    0x1C: "WAIT",
+    0x1D: "RAND",
+    0x1E: "BEEP",
+    0x1F: "HLT",
+    0x20: "LDY",
+    0x21: "STY",
+    0x22: "PNE",
+    0x23: "PTO",
+    0x24: "PDW",
+    0x25: "PUP",
+    0x26: "PCO",
+    0x27: "PDO",
+    0x28: "USC",
+    0x29: "CLS",
+}
+
+def get_i_name(i):
+    i_names.get(i, "unknown")
+
 while PC < len(code):
     i = code[PC]
     
     if debug_mode == 0x01:
-        print(f"debug: ran instruction {hex(i)} at PC={hex(PC)}")
+        print(f"debug: ran instruction {hex(i)} ({get_i_name(i)}) at PC={hex(PC)}")
     
     if i == 0x00:   LDA(code[PC+1], code[PC+2]); PC += 3
     elif i == 0x01: LDB(code[PC+1], code[PC+2]); PC += 3
@@ -837,9 +1077,7 @@ while PC < len(code):
     elif i == 0x0E:
         if debug_mode == 0x01: print(f"debug: JSR to PC={hex(code[PC+1])}")
         JSR(code[PC+1])
-    elif i == 0x0F:
-        if debug_mode == 0x01: print(f"debug: RTS back to where JSR was last called")
-        RTS()
+    elif i == 0x0F: RTS()
     elif i == 0x10: ADDS(); PC += 1
     elif i == 0x11: OUTH(code[PC+1]); PC += 2
     elif i == 0x12: SWAP(code[PC+1]); PC += 2
@@ -852,27 +1090,41 @@ while PC < len(code):
     elif i == 0x19: SHR(code[PC+1]); PC += 2
     elif i == 0x1A: OUTB(code[PC+1]); PC += 2
     elif i == 0x1B: IN(code[PC+1]); PC += 2
-    elif i == 0x1C: PAUSE(code[PC+1]); PC += 2
+    elif i == 0x1C: WAIT(code[PC+1]); PC += 2
     elif i == 0x1D: RAND(); PC += 1
     elif i == 0x1E: BEEP(code[PC+1], code[PC+2], code[PC+3]); PC += 4
     elif i == 0x1F: HLT(); PC += 1
+    elif i == 0x20: LDY(code[PC+1], code[PC+2]); PC += 3
+    elif i == 0x21: STY(code[PC+1]); PC += 2
+    elif i == 0x22: PNE(); PC += 1
+    elif i == 0x23: PTO(); PC += 1
+    elif i == 0x24: PDW(); PC += 1
+    elif i == 0x25: PUP(); PC += 1
+    elif i == 0x26: PCO(code[PC+1]); PC += 2
+    elif i == 0x27: PDO(); PC += 1
+    elif i == 0x28: USC(); PC += 1
+    elif i == 0x29: CLS(); PC += 1
     else:
         print(f" fatal error: invalid instruction {hex(i)}")
         exit()
     
     chk_buffers_size()
     
-    A  = buff["A"]
-    B  = buff["B"]
-    X  = buff["X"]
+    A = buff["A"]
+    B = buff["B"]
+    X = buff["X"]
+    Y = buff["Y"]
     
     if debug_mode == 0x1:
         #for debug, print all buffers and more
         print(f"debug: compare status {hex(CMP_status)}")
+        print(f"debug: pen active {hex(pen_active)}")
         print(f"debug: A  = {tryhex(A)}" )
         print(f"debug: B  = {tryhex(B)}" )
         print(f"debug: X  = {tryhex(X)}" )
+        print(f"debug: Y  = {tryhex(Y)}" )
         print(f"debug: PC = {hex(PC)}"   )
 
 print(" end of execution")
+while ppu.running: ppu.update_frame()
 exit()

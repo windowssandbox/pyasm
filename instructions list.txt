@@ -1,18 +1,30 @@
+//buffers:
+// 0x00: A
+// 0x01: B
+// 0x02: X
+// 0x03: Y
+
+//loc:
+// 0x00: rodata
+// 0x01: bss
+
 // LD<buffer>: loads data from an address inside rodata or bss into buffer
-0x00: LDA <loc, 0x00: rodata, 0x01: bss> <address>
-0x01: LDB <loc, 0x00: rodata, 0x01: bss> <address>
-0x02: LDX <loc, 0x00: rodata, 0x01: bss> <address>
+0x00: LDA <loc> <address>
+0x01: LDB <loc> <address>
+0x02: LDX <loc> <address>
+0x20: LDY <loc> <address>
 
 // ST<buffer>: stores data from a buffer into an address inside bss
 0x03: STA <address>
 0x04: STB <address>
 0x05: STX <address>
+0x21: STY <address>
 
 // INC: increments a buffer by 1
-0x06: INC <buffer, 0x00: A, 0x01: B, 0x02: X>
+0x06: INC <buffer>
 
 // DEC: decrements a buffer by 1
-0x07: DEC <buffer, 0x00: A, 0x01: B, 0x02: X>
+0x07: DEC <buffer>
 
 // ADD: adds buffer B to buffer A
 0x08: ADD
@@ -21,10 +33,10 @@
 0x09: SUB
 
 // OUT: outputs a buffer
-0x0A: OUT <buffer, 0x00: A, 0x01: B, 0x02: X>
+0x0A: OUT <buffer>
 
 // CMP: compares buffer1 <operator> buffer2
-0x0B: CMP <buffer1, 0x00: A, 0x01: B, 0x02: X> <buffer2, 0x00: A, 0x01: B, 0x02: X> <operator, 0x00: ==, 0x01: !=, 0x02: >, 0x03: <, 0x04: >=, 0x05: <= >
+0x0B: CMP <buffer1> <buffer2> <operator, 0x00: ==, 0x01: !=, 0x02: >, 0x03: <, 0x04: >=, 0x05: <= >
 
 // JMP: jumps PC to address index in code list
 0x0C: JMP <address>
@@ -44,8 +56,8 @@
 // OUTH: outputs hex value of the buffer
 0x11: OUTH <buffer>
 
-// SWAP: swaps buffer A or B with buffer X
-0x12: SWAP <buffer>
+// SWAP: swaps buffer1 (A or B) with buffer2 (X or Y)
+0x12: SWAP <buffer1> <buffer2>
 
 // CLC: clears all buffers
 0x13: CLC
@@ -66,8 +78,8 @@
 // IN: takes input of user and puts it in buffer
 0x1B: IN <buffer>
 
-// PAUSE: pauses CPU for <buffer> seconds
-0x1C: PAUSE <buffer>
+// WAIT: pauses CPU for <buffer> seconds
+0x1C: WAIT <buffer>
 
 // RAND: takes min (buffer A) and max (buffer B) range
 	then rolls random value
@@ -75,7 +87,17 @@
 0x1D: RAND
 
 // BEEP: plays a beep sound for <duration> seconds at <frequency> Hz
-0x1E: BEEP <loc, 0x00: rodata, 0x01: bss> <frequency> <duration>
+0x1E: BEEP <loc> <frequency> <duration>
 
 // HLT: halt CPU
 0x1F: HLT
+
+// PPU instructions:
+0x22: PNE (new pen: sets pen active to 0x1)
+0x23: PTO (pen to [x: buffer X, y: buffer Y])
+0x24: PDW (pen down)
+0x25: PUP (pen up)
+0x26: PCO <buffer> (pen color, in grayscale)
+0x27: PDO (pen done, resets pen pos to [0,0] and UPs the pen, sets pen active to 0x0)
+0x28: USC (update frame)
+0x29: CLS (clear screen, resets pen pos to [0,0] and UPs the pen)
