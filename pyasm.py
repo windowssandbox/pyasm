@@ -40,10 +40,10 @@ debug_mode  = 0x1    # (default: 0x0, recommended: 0x1)
     address pointer must be valid
 """
 rodata = {
-    0x0: {
+    0x0: { # hw_msg
         "addr": 0x0000,
-        "data": 0x00,
-        "size": 0x1
+        "data": "Hello, World!",
+        "size": 0xD
     },
 }
 
@@ -73,7 +73,9 @@ bss = {
 ## (put multiple indexes in one line)
 code = [
     ## main: 0x00
-        
+        0x00, 0x00, 0x0000, # 0x00: LDA rodata hw_msg
+        0x0A, 0x00,         # 0x03: OUT A
+        0x1F,               # 0x05: HLT
 ]
 
 #buffers
@@ -1048,7 +1050,7 @@ i_names = {
 }
 
 def get_i_name(i):
-    i_names.get(i, "unknown")
+    return i_names.get(i, "unknown")
 
 while PC < len(code):
     i = code[PC]
