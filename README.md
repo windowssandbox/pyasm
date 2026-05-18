@@ -1,4 +1,4 @@
-Amount of instructions: 42 (ranging from 0x00 to 0x29)
+Amount of instructions: 43 (ranging from 0x00 to 0x2A)
 
 ## Introduction
 - `pyasm` is a custom assembly language that runs on Python script.
