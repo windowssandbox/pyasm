@@ -1,9 +1,11 @@
+import os
 import sys
 import random
 import tkinter as tk
 
 try:    #try importing all required packages
     from beep import beep
+    from PIL import Image
 except: #otherwise, display error message instead
     print(" script error: one of packages are missing, please run 'install-packages.bat' to install all required packages (make sure you have pip installed)")
     input("press enter to exit")
@@ -25,7 +27,7 @@ pen_active = 0x0
 rodata_size = 0xFFFF # (default: 0xFFFF 2kb)
 bss_size    = 0xFFFF # (default: 0xFFFF 2kb)
 buff_size   = 0xFF   # (default: 0xFF bytes) for each buffer
-debug_mode  = 0x1    # (default: 0x0, recommended: 0x1)
+debug_mode  = 0x0    # (default: 0x0, recommended: 0x1)
 
 #rom data
 """
@@ -40,10 +42,11 @@ debug_mode  = 0x1    # (default: 0x0, recommended: 0x1)
     address pointer must be valid
 """
 rodata = {
-    0x0: { # hw_msg
+    0x0: {
         "addr": 0x0000,
-        "data": "Hello, World!",
-        "size": 0xD
+        "sprite": False,
+        "data": 0x00,
+        "size": 0x01
     },
 }
 
@@ -72,10 +75,8 @@ bss = {
 ## <opcode>, <its arguments>, # <PC>: (instruction in text format)
 ## (put multiple indexes in one line)
 code = [
-    ## main: 0x00
-        0x00, 0x00, 0x0000, # 0x00: LDA rodata hw_msg
-        0x0A, 0x00,         # 0x03: OUT A
-        0x1F,               # 0x05: HLT
+    ## main: 0000
+        
 ]
 
 #buffers
@@ -90,6 +91,9 @@ def exit(msg=""):
     if not msg == "": print(msg)
     input("press enter to exit")
     sys.exit()
+
+def val_8bit(val):
+    return (val & 0xFF)
 
 #PICTURE PROCESSING UNIT (PPU)
 class PPU:
@@ -146,6 +150,43 @@ class PPU:
         self.pen_x = x
         self.pen_y = y
     
+    def stamp_sprite(self, path, x, y):
+        sprite_path = os.path.normpath(path)
+        try:
+            with Image.open(sprite_path) as img:
+                img  = img.convert("L")
+                pxS  = img.load()
+                w, h = img.size
+                
+                off_x = w // 2
+                off_y = h // 2
+                
+                for pxY in range(h):
+                    for pxX in range(w):
+                        brightness = pxS[pxX, pxY]
+                        #transparency support
+                        if brightness == 0: continue
+                        #apply 8bit overflow
+                        wx = val_8bit(x - off_x + pxX)
+                        wy = val_8bit(y - off_y + pxY)
+                        #convert brightness to hex col string
+                        hex_c = f"{brightness:02x}"
+                        color = f"#{hex_c}{hex_c}{hex_c}"
+                        #calc coords with scale
+                        x1 = wx * res_scale
+                        y1 = wy * res_scale
+                        x2 = x1 + res_scale
+                        y2 = y1 + res_scale
+                        #draw that pixel
+                        self.canvas.create_rectangle(
+                            x1, y1, x2, y2,
+                            fill = color,
+                            outline = ""
+                        )
+        except Exception as err:
+            print(f" PPU error: failed to STMP sprite {path}")
+            print(f"/PYTHON: {err}")
+    
     def clear_screen(self):
         self.canvas.delete("all")
         self.pen_x = 0
@@ -171,6 +212,12 @@ def trylen(data):
         return len(data)
     except:
         return 1
+
+def tryint(data):
+    try:
+        return int(data)
+    except:
+        return data
 
 def chk_buffers_size():
     global buff_size
@@ -229,6 +276,15 @@ def chk_address(loc, address):
     if loc == 0x01: print(f" fatal error: address {hex(address)} is not valid address inside bss")
     exit()
 
+def get_address_pointer(loc, address):
+    if loc == 0x00:
+        for i in rodata:
+            if rodata[i]["addr"] == address: return rodata[i]
+    
+    if loc == 0x01:
+        for i in bss:
+            if bss[i]["addr"] == address: return bss[i]
+
 def get_address_data(loc, address):
     global rodata, bss
     
@@ -260,9 +316,6 @@ def do_operator(buff1, buff2, op):
     if op == 0x03: return buff[tb1] <  buff[tb2]
     if op == 0x04: return buff[tb1] >= buff[tb2]
     if op == 0x05: return buff[tb1] <= buff[tb2]
-
-def val_8bit(val):
-    return (val & 0xFF)
 
 #instructions
 def LDA(loc, address):  # 0x00, 2 args
@@ -536,12 +589,10 @@ def RTS():      # 0x0F
 
 def ADDS():     # 0x10
     """
-    desc: joins string of buffer B into buffer A
+    desc: joins string/value of buffer B into buffer A (converts into string)
     """
-    em = " error: ADDS cannot add values, it must be strings"
     
-    if isinstance(buff["A"], str) and isinstance(buff["B"], str): buff["A"] += buff["B"]
-    else: exit(em)
+    buff["A"] = str(buff["A"]) + str(buff["B"])
 
 def OUTH(_buff):  # 0x11, 1 arg
     """
@@ -718,7 +769,11 @@ def IN(_buff):   # 0x1B, 1 arg
     tb = chk_target_buffer(_buff)
     
     #try to store it as hex value, otherwise store it as string
-    buff[tb] = tryhex(input("input: "))
+    buff[tb] = input("input: ")
+    buff[tb] = tryint(buff[tb])
+    
+    if isinstance(buff[tb], int):
+        buff[tb] = val_8bit(buff[tb])
 
 def WAIT(_buff): # 0x1C, 1 arg
     """
@@ -769,7 +824,7 @@ def BEEP(loc, freq, dur): # 0x1E, 3 args
     )
     freq: <address>
     dur:  <address>
-    desc: plays a beep sound for <duration> miliseconds at <frequency> Hz
+    desc: plays a beep sound for (<duration>*10) miliseconds at (<frequency>*100) Hz (delays CPU)
     """
     em = " error: min or max is a string, not value"
     
@@ -778,8 +833,8 @@ def BEEP(loc, freq, dur): # 0x1E, 3 args
     chk_status = chk_address(loc, dur)
     chk()
     
-    freq_ = get_address_data(loc, freq)
-    dur_  = get_address_data(loc, dur)
+    freq_ = get_address_data(loc, freq) * 100
+    dur_  = get_address_data(loc, dur) * 10
     
     if isinstance(freq_, int) and isinstance(dur_, int): 0
     else: exit(em)
@@ -895,7 +950,27 @@ def USC():  # 0x28
     else: exit(em)
 
 def CLS():  # 0x29
-    ppu.clear_screen()
+    global pen_active
+    em = " PPU error: attempted to clear screen while pen is not active"
+    
+    if pen_active: ppu.clear_screen()
+    else: exit(em)
+
+def STMP(address):  # 0x2A, 1 arg
+    em1 = f" error: buffer X or Y must be value"
+    em2 = f' error: rodata address {hex(address)} doesn\'t have property "sprite" set to True (or it doesn\'t exist)'
+    chk_address(0x00, address)
+    ap      = get_address_pointer(0x00, address)
+    ap_data = ap["data"]
+    
+    if isinstance(buff["X"], int) and isinstance(buff["Y"], int): 0
+    else: exit(em1)
+    
+    #check if theres "sprite" set to True
+    if ap["sprite"]:
+        #stamp that sprite
+        ppu.stamp_sprite(f".\sprites\{ap_data}", buff["X"], buff["Y"])
+    else: exit(em2)
 
 #check:
 ## it makes sure you setted up rodata and bss correctly
@@ -928,25 +1003,51 @@ def check():
                 print(f" rodata error: data in address {hex(ap_addr)} is overlapping next address, size: {hex(ap_size)}")
                 print(f"|SUGGESTED FIX: shift next address pointer until the data on current address pointer fits")
                 errors += 1
-            
-        #check if the variable index's size match (or is bigger then) actual size of variable index's data
-        actual_ap_size = trylen(ap_data)
-        valid_ap_size = ap_size >= actual_ap_size
-        if not valid_ap_size:
-            print(f" rodata error: size in address {hex(ap_addr)} doesn't match actual size of data")
-            print(f"|SUGGESTED FIX: change size of rodata address {hex(ap_addr)} to {hex(actual_ap_size)}")
-            errors += 1
         
-        #check if the variable is within 8bit
-        if isinstance(ap_data, int):
-            if ap_data <= 0xFF: 0
+        #handle different check if it's a sprite
+        if ap["sprite"]:
+            sprite_path = f".\sprites\{str(ap_data)}"
+            if os.path.exists(sprite_path):
+                sprite_size = os.path.getsize(sprite_path)
+                
+                #check if sprite size matches exactly
+                if sprite_size == ap_size: 0
+                else:
+                    print(f" rodata error: index's size doesn't match actual sprite's size")
+                    print(f"|SUGGESTED FIX: change index's size to {hex(sprite_size)} bytes")
+                    errors += 1
+                
+                with Image.open(sprite_path) as img:
+                    w, h = img.size
+                    #check if dimensions is 16x16 or 16x32
+                    if (w == 16 and h == 16) or (w == 16 and h == 32): 0
+                    else:
+                        print(f" rodata error: sprite {sprite_path} has invalid dimensions {w}x{h}")
+                        print(f"|SUGGESTED FIX: change the sprite bmp file's dimensions to 16x16 or 16x32")
+                        errors += 1
             else:
-                print(f" rodata error: value in address {hex(ap_addr)} must be 8-bit")
+                print(f" rodata error: sprite path {sprite_path} doesn't exist")
+                errors += 1
+        
+        else: #regular data check
+            #check if the variable index's size match (or is bigger then) actual size of variable index's data
+            actual_ap_size = trylen(ap_data)
+            valid_ap_size = ap_size >= actual_ap_size
+            if not valid_ap_size:
+                print(f" rodata error: size in address {hex(ap_addr)} doesn't match actual size of data")
+                print(f"|SUGGESTED FIX: change size of rodata address {hex(ap_addr)} to {hex(actual_ap_size)}")
                 errors += 1
             
-            #warning for unused occupied space
-            if ap_size > 0x1:
-                print(f" rodata warning: size of value address {hex(ap_addr)} has unused occupied space that is {hex(ap_size-1)} byte(s) large")
+            #check if the variable is within 8bit
+            if isinstance(ap_data, int):
+                if ap_data <= 0xFF: 0
+                else:
+                    print(f" rodata error: value in address {hex(ap_addr)} must be 8-bit")
+                    errors += 1
+                
+                #warning for unused occupied space
+                if ap_size > 0x1:
+                    print(f" rodata warning: size of value address {hex(ap_addr)} has unused occupied space that is {hex(ap_size-1)} byte(s) large")
     
     ## bss
     for i in range(len(bss)):
@@ -1082,7 +1183,7 @@ while PC < len(code):
     elif i == 0x0F: RTS()
     elif i == 0x10: ADDS(); PC += 1
     elif i == 0x11: OUTH(code[PC+1]); PC += 2
-    elif i == 0x12: SWAP(code[PC+1]); PC += 2
+    elif i == 0x12: SWAP(code[PC+1], code[PC+2]); PC += 3
     elif i == 0x13: CLC(); PC += 1
     elif i == 0x14: AND(); PC += 1
     elif i == 0x15: OR();  PC += 1
@@ -1106,6 +1207,7 @@ while PC < len(code):
     elif i == 0x27: PDO(); PC += 1
     elif i == 0x28: USC(); PC += 1
     elif i == 0x29: CLS(); PC += 1
+    elif i == 0x2A: STMP(code[PC+1]); PC += 2
     else:
         print(f" fatal error: invalid instruction {hex(i)}")
         exit()

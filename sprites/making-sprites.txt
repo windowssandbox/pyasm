@@ -1,0 +1,41 @@
+to make sprites, you need to follow these steps:
+1. create an empty .bmp file that MUST have dimensions of 16x16 or 16x32
+2. make sure its colors are in grayscale (due to limited PPU color of grayscale)
+3. draw the sprite
+4. save it
+
+to know the sprite's size, right click the new .bmp file you just saved, then press properties and look at how many bytes it has, then put that number inside "size" property.
+
+in order to use it in the code, here's usage:
+# the sprite MUST be in rodata
+rodata = {
+    0x0: { # sprite
+        "addr": 0x0000,
+        "sprite": True,
+        "data": "yoursprite.bmp",
+        "size": 0x?? #bytes
+    },
+}
+
+bss = {
+    0x0: { # sprite_x
+        "addr": 0x0000,
+        "data": 0x??, # x coordinate
+        "size": 0x1
+    },
+    0x1: { # sprite_y
+        "addr": 0x0001,
+        "data": 0x??, # y coordinate
+        "size": 0x1
+    },
+}
+
+code = [
+    ## main: 0x00
+        0x22,               # PNE
+        0x02, 0x01, 0x0000, # LDX bss sprite_x
+        0x20, 0x01, 0x0001, # LDY bss sprite_y
+        0x2A, 0x0000,       # STMP sprite
+        0x27,               # PDO
+        0x28,               # USC
+]
