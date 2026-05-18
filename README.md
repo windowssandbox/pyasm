@@ -18,6 +18,7 @@ The checker is the one that checks if you set up `rodata` and `bss` structure co
 4. if `"size"` value is equal or larger than actual data's size.
 5. (for val) if the value is withn 8-bit limit.
 6. (for val) warn if `"size"` has unused occupied space.
+7. etc
 
 If one of them fails, it reports error and moves on to next item index.
 
@@ -29,6 +30,7 @@ For example here's the classic hello world code:
 rodata = {
     0x0: { # hw_msg
         "addr": 0x0000,
+        "sprite": False,
         "data": "Hello, World!",
         "size": 0xD
     },
@@ -82,3 +84,6 @@ That text file has all information on instructions on what they do and what argu
 1. Install Python (recommended version 3.11.9): https://www.python.org/downloads/
 2. Run `install-packages.bat` file to install required package(s).
 3. Run `pyasm.py` file by opening it or running it on terminal.
+
+## Sprites
+Read `\sprites\making-sprites.txt` file for info.
