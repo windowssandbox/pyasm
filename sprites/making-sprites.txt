@@ -1,6 +1,6 @@
 to make sprites, you need to follow these steps:
 1. create an empty .bmp file that MUST have dimensions of 16x16 or 16x32
-2. make sure its colors are in grayscale (due to limited PPU color of grayscale)
+2. make sure its colors are in 4bbp grayscale
 3. draw the sprite
 4. save it
 

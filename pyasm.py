@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import random
 import tkinter as tk
 
@@ -27,7 +28,7 @@ pen_active = 0x0
 rodata_size = 0xFFFF # (default: 0xFFFF 2kb)
 bss_size    = 0xFFFF # (default: 0xFFFF 2kb)
 buff_size   = 0xFF   # (default: 0xFF bytes) for each buffer
-debug_mode  = 0x0    # (default: 0x0, recommended: 0x1)
+debug_mode  = 0x1    # (default: 0x0, recommended: 0x1)
 
 #rom data
 """
@@ -44,9 +45,15 @@ debug_mode  = 0x0    # (default: 0x0, recommended: 0x1)
 rodata = {
     0x0: {
         "addr": 0x0000,
+        "sprite": True,
+        "data": "template.bmp",
+        "size": 0xE9 #bytes
+    },
+    0x1: {
+        "addr": 0x00E9,
         "sprite": False,
         "data": 0x00,
-        "size": 0x01
+        "size": 0x1
     },
 }
 
@@ -95,6 +102,22 @@ def exit(msg=""):
 def val_8bit(val):
     return (val & 0xFF)
 
+def get_palette_rgb(col):
+    brightness_nibble = (col >> 4) & 0x0F
+    hue_nibble        = col        & 0x0F
+    lum = int((brightness_nibble/15) * 255)
+    
+    if hue_nibble == 0: return (lum, lum, lum)
+    
+    angle = (hue_nibble/15) * 2 * math.pi
+    sat = 127 if (0 < brightness_nibble < 15) else 0
+    
+    r = max(0, min(255, int(lum + sat * math.cos(angle))))
+    g = max(0, min(255, int(lum + sat * math.cos(angle - 2 * math.pi / 3))))
+    b = max(0, min(255, int(lum + sat * math.cos(angle + 2 * math.pi / 3))))
+    
+    return (r,g,b)
+
 #PICTURE PROCESSING UNIT (PPU)
 class PPU:
     def __init__(self):
@@ -114,7 +137,8 @@ class PPU:
         self.pen_x    = 0x00
         self.pen_y    = 0x00
         self.pen_down = 0x0
-        self.color    = "#FFFFFF"
+        self.col_pen  = "#FFFFFF"
+        self.col_pal  = [0x00, 0x00, 0x00, 0x00]
         self.cur_line = None
     
     def on_closing(self):
@@ -129,9 +153,15 @@ class PPU:
             except:
                 self.running = False
     
+    def rgb_to_hex(self, col):
+        r = f"{col[0]:02x}"
+        g = f"{col[1]:02x}"
+        b = f"{col[2]:02x}"
+        return f"#{r}{g}{b}"
+    
     def set_color(self, val):
-        hex_val = f"{val:02x}"
-        self.color = f"#{hex_val}{hex_val}{hex_val}"
+        col_8bit = get_palette_rgb(val)
+        self.col_pen = self.rgb_to_hex(col_8bit)
     
     def move_pen(self, x, y):
         old_x = self.pen_x
@@ -143,7 +173,7 @@ class PPU:
                 old_y * res_scale,
                 x * res_scale,
                 y * res_scale,
-                fill = self.color,
+                fill = self.col_pen,
                 width = res_scale,
             )
         
@@ -157,21 +187,29 @@ class PPU:
                 img  = img.convert("L")
                 pxS  = img.load()
                 w, h = img.size
+                pal_index = 0x0
                 
                 off_x = w // 2
                 off_y = h // 2
                 
                 for pxY in range(h):
                     for pxX in range(w):
-                        brightness = pxS[pxX, pxY]
+                        raw_val = pxS[pxX, pxY]
+                        #map to 4bpp
+                        if raw_val < 64:    pal_index = 0x0
+                        elif raw_val < 128: pal_index = 0x1
+                        elif raw_val < 192: pal_index = 0x2
+                        else:               pal_index = 0x3
                         #transparency support
-                        if brightness == 0: continue
-                        #apply 8bit overflow
+                        if pal_index == 0x0: continue
+                        #get 8bit col byte
+                        col_byte = self.col_pal[pal_index]
+                        #do math on final rgb
+                        colrgb = get_palette_rgb(col_byte)
+                        color = self.rgb_to_hex(colrgb)
+                        #8bit overflow on coords
                         wx = val_8bit(x - off_x + pxX)
                         wy = val_8bit(y - off_y + pxY)
-                        #convert brightness to hex col string
-                        hex_c = f"{brightness:02x}"
-                        color = f"#{hex_c}{hex_c}{hex_c}"
                         #calc coords with scale
                         x1 = wx * res_scale
                         y1 = wy * res_scale
@@ -306,7 +344,7 @@ def set_address_data(data, address):
             bss[i]["data"] = data
             return
 
-def do_operator(buff1, buff2, op):
+def do_operator_CMP(buff1, buff2, op):
     tb1 = chk_target_buffer(buff1)
     tb2 = chk_target_buffer(buff2)
     
@@ -316,6 +354,16 @@ def do_operator(buff1, buff2, op):
     if op == 0x03: return buff[tb1] <  buff[tb2]
     if op == 0x04: return buff[tb1] >= buff[tb2]
     if op == 0x05: return buff[tb1] <= buff[tb2]
+
+def do_operator_CMPI(_buff, val, op):
+    tb = chk_target_buffer(_buff)
+    
+    if op == 0x00: return buff[tb] == val
+    if op == 0x01: return buff[tb] != val
+    if op == 0x02: return buff[tb] >  val
+    if op == 0x03: return buff[tb] <  val
+    if op == 0x04: return buff[tb] >= val
+    if op == 0x05: return buff[tb] <= val
 
 #instructions
 def LDA(loc, address):  # 0x00, 2 args
@@ -369,7 +417,7 @@ def LDX(loc, address):  # 0x02, 2 args
     #then load that data to buffer X
     buff["X"] = get_address_data(loc, address)
 
-def STA(address):       # 0x03, 1 arg
+def STA(address):   # 0x03, 1 arg
     """
     address: <hex>
     desc: store
@@ -391,7 +439,7 @@ def STA(address):       # 0x03, 1 arg
     #store buffer A into that address data
     set_address_data(buff["A"], address)
 
-def STB(address):       # 0x04, 1 arg
+def STB(address):   # 0x04, 1 arg
     """
     address: <hex>
     desc: store
@@ -413,7 +461,7 @@ def STB(address):       # 0x04, 1 arg
     #store buffer B into that address data
     set_address_data(buff["B"], address)
 
-def STX(address):       # 0x05, 1 arg
+def STX(address):   # 0x05, 1 arg
     """
     address: <hex>
     desc: store
@@ -473,26 +521,28 @@ def DEC(_buff): # 0x07, 1 arg
         buff[tb] = val_8bit(buff[tb])
     else: exit(em)
 
-def ADD():      # 0x08
+def ADD(buff1, buff2):  # 0x08, 2 args
     """
-    desc: adds value of buffer B into buffer A
+    desc: adds value of buffer1 into buffer2
     """
     em = " error: ADD cannot add strings, it must be values"
+    tb1 = chk_target_buffer(buff1)
+    tb2 = chk_target_buffer(buff2)
     
-    if isinstance(buff["A"], int) and isinstance(buff["B"], int):
-        buff["A"] += buff["B"]
-        buff["A"] = val_8bit(buff["A"])
+    if isinstance(buff[tb1], int) and isinstance(buff[tb2], int):
+        buff[tb2] = val_8bit(buff[tb2] + buff[tb1])
     else: exit(em)
 
-def SUB():      # 0x09
+def SUB(buff1, buff2):  # 0x09, 2 args
     """
-    desc: subtracts value of buffer B from buffer A
+    desc: subtracts value of buffer1 into buffer2
     """
-    em = " error: cannot subtract strings, it must be values"
+    em = " error: SUB cannot subtract strings, it must be values"
+    tb1 = chk_target_buffer(buff1)
+    tb2 = chk_target_buffer(buff2)
     
-    if isinstance(buff["A"], int) and isinstance(buff["B"], int):
-        buff["A"] -= buff["B"]
-        buff["A"] = val_8bit(buff["A"])
+    if isinstance(buff[tb1], int) and isinstance(buff[tb2], int):
+        buff[tb2] = val_8bit(buff[tb2] - buff[tb1])
     else: exit(em)
 
 def OUT(_buff): # 0x0A, 1 arg
@@ -544,7 +594,7 @@ def CMP(buff1, buff2, op): # 0x0B, 3 args
     if op <= 0x05: 0
     else: exit(em3)
     
-    CMP_status = do_operator(buff1, buff2, op)
+    CMP_status = do_operator_CMP(buff1, buff2, op)
 
 def JMP(address):   # 0x0C, 1 arg
     """
@@ -610,29 +660,21 @@ def OUTH(_buff):  # 0x11, 1 arg
     if isinstance(buff[tb], int): print(hex(buff[tb]))
     else: exit(em)
 
-def SWAP(_2buff, _2tb): # 0x12, 1 arg
+def SWAP(buff1, buff2): # 0x12, 2 args
     """
-    _2buff (
-        0x00: buffer A
-        0x01: buffer B
-    )
-    _2tb (
-        0x00: buffer X
-        0x01: buffer Y
-    )
-    desc: swaps buffer A or B with buffer X or Y
+    desc: swaps buffer1 with buffer2
     """
-    em1 = " error: SWAP invalid target buffer #1, must be A or B"
-    em2 = " error: SWAP invalid target buffer #2, must be X or Y"
-    tb  = "."
+    em  = " error: cannot swap the same buffer"
+    tb1 = chk_target_buffer(buff1)
+    tb2 = chk_target_buffer(buff2)
+    temp_buff = 0x00
     
-    if   _2tb == 0x00: temp_buff = buff["X"]; tb = "X"
-    elif _2tb == 0x01: temp_buff = buff["Y"]; tb = "Y"
-    else: exit(em2)
+    if tb1 == tb2: exit(em)
     
-    if   _2buff == 0x00: buff[tb] = buff["A"]; buff["A"] = temp_buff
-    elif _2buff == 0x01: buff[tb] = buff["B"]; buff["B"] = temp_buff
-    else: exit(em1)
+    temp_buff = buff[tb2]
+    
+    buff[tb2] = buff[tb1]
+    buff[tb1] = temp_buff
 
 def CLC():  # 0x13
     """
@@ -890,10 +932,16 @@ def STY(address):       # 0x21, 1 arg
     set_address_data(buff["Y"], address)
 
 def PNE():  # 0x22
+    """
+    desc: pen new (sets pen_active to 0x1)
+    """
     global pen_active
-    pen_active = True
+    pen_active = 0x1
 
 def PTO():  # 0x23
+    """
+    desc: pen to [x: buffer X, y: buffer Y]
+    """
     global pen_active
     em = " PPU error: pen is not active yet"
     
@@ -907,6 +955,9 @@ def PTO():  # 0x23
     else: exit(em)
 
 def PDW():  # 0x24
+    """
+    desc: pen down
+    """
     global pen_active
     em = " PPU error: pen is not active yet"
     
@@ -915,6 +966,9 @@ def PDW():  # 0x24
     else: exit(em)
 
 def PUP():  # 0x25
+    """
+    desc: pen up
+    """
     global pen_active
     em = " PPU error: pen is not active yet"
     
@@ -922,7 +976,10 @@ def PUP():  # 0x25
         ppu.pen_down = 0x0
     else: exit(em)
 
-def PCO(_buff):  # 0x26
+def PCO(_buff):  # 0x26, 1 arg
+    """
+    desc: set pen color (grayscale)
+    """
     global pen_active
     em = " PPU error: pen is not active yet"
     
@@ -937,12 +994,18 @@ def PCO(_buff):  # 0x26
     else: exit(em)
 
 def PDO():  # 0x27
+    """
+    desc: pen done (sets pen_active to 0x0)
+    """
     global pen_active
-    pen_active = False
+    pen_active = 0x0
     ppu.pen_down = 0x0
     ppu.move_pen(0x00, 0x00)
 
 def USC():  # 0x28
+    """
+    desc: update frame
+    """
     global pen_active
     em = " PPU error: attempted to update frame while pen is active"
     
@@ -950,6 +1013,9 @@ def USC():  # 0x28
     else: exit(em)
 
 def CLS():  # 0x29
+    """
+    desc: clear screen
+    """
     global pen_active
     em = " PPU error: attempted to clear screen while pen is not active"
     
@@ -957,6 +1023,9 @@ def CLS():  # 0x29
     else: exit(em)
 
 def STMP(address):  # 0x2A, 1 arg
+    """
+    desc: stamp sprite from <address> inside rodata
+    """
     em1 = f" error: buffer X or Y must be value"
     em2 = f' error: rodata address {hex(address)} doesn\'t have property "sprite" set to True (or it doesn\'t exist)'
     chk_address(0x00, address)
@@ -971,6 +1040,95 @@ def STMP(address):  # 0x2A, 1 arg
         #stamp that sprite
         ppu.stamp_sprite(f".\sprites\{ap_data}", buff["X"], buff["Y"])
     else: exit(em2)
+
+def TSF(buff1, buff2):  # 0x2B, 2 args
+    """
+    desc: transfer <buffer1> to <buffer2>
+    """
+    tb1 = chk_target_buffer(buff1)
+    tb2 = chk_target_buffer(buff2)
+    
+    buff[tb2] = buff[tb1]
+
+def LDI(_buff, val):    # 0x2C, 2 args
+    """
+    desc: load immeadiate
+    """
+    em = " error: cannot LDI a string"
+    tb = chk_target_buffer(_buff)
+    
+    if isinstance(val, int): 0
+    else: exit(em)
+    
+    buff[tb] = val_8bit(val)
+
+def CMPI(_buff, val, op): # 0x2D, 3 args
+    """
+    desc: CMP immeadiate
+    """
+    global CMP_status
+    em1    = " error: CMP buffer1 is a string"
+    em2    = " error: CMP value is a string"
+    em3    =f" error: CMP operator {hex(op)} is invalid"
+    
+    tb = chk_target_buffer(_buff)
+    
+    if isinstance(buff[tb], int): 0
+    else: exit(em1)
+    
+    if isinstance(val, int): 0
+    else: exit(em2)
+    
+    if op <= 0x05: 0
+    else: exit(em3)
+    
+    CMP_status = do_operator_CMPI(_buff, val, op)
+
+def ADDI(_buff, val):    # 0x2E, 2 args
+    """
+    desc: ADD immeadiate
+    """
+    em = " error: ADDI cannot add strings, it must be values"
+    tb = chk_target_buffer(_buff)
+    
+    if isinstance(buff[tb], int) and isinstance(val, int):
+        buff[tb] = val_8bit(buff[tb] + val)
+    else: exit(em)
+
+def SUBI(_buff, val):    # 0x2F, 2 args
+    """
+    desc: SUB immeadiate
+    """
+    em = " error: SUBI cannot subtract strings, it must be values"
+    tb = chk_target_buffer(_buff)
+    
+    if isinstance(buff[tb], int) and isinstance(val, int):
+        buff[tb] = val_8bit(buff[tb] - val)
+    else: exit(em)
+
+def PAL(pal_index, col):    # 0x30, 2 args
+    """
+    desc: sets color palette index to <color>
+    """
+    global pen_active
+    em1 = " PPU error: attempted to change color palette index while pen is inactive"
+    em2 = " PPU error: invalid pal_index (palette indexes are 0x1, 0x2, and 0x3)"
+    
+    if pen_active:
+        if pal_index < 1 or pal_index > 3: exit(em2)
+        ppu.col_pal[pal_index] = col
+    else: exit(em1)
+
+def PCOI(val):   # 0x31, 1 arg
+    """
+    desc: set pen color (grayscale)
+    """
+    global pen_active
+    em = " PPU error: pen is not active yet"
+    
+    if pen_active:
+        ppu.set_color(val)
+    else: exit(em)
 
 #check:
 ## it makes sure you setted up rodata and bss correctly
@@ -1148,6 +1306,14 @@ i_names = {
     0x27: "PDO",
     0x28: "USC",
     0x29: "CLS",
+    0x2A: "STMP",
+    0x2B: "TSF",
+    0x2C: "LDI",
+    0x2D: "CMPI",
+    0x2E: "ADDI",
+    0x2F: "SUBI",
+    0x30: "PAL",
+    0x31: "PCOI",
 }
 
 def get_i_name(i):
@@ -1167,8 +1333,8 @@ while PC < len(code):
     elif i == 0x05: STX(code[PC+1]); PC += 2
     elif i == 0x06: INC(code[PC+1]); PC += 2
     elif i == 0x07: DEC(code[PC+1]); PC += 2
-    elif i == 0x08: ADD(); PC += 1
-    elif i == 0x09: SUB(); PC += 1
+    elif i == 0x08: ADD(code[PC+1], code[PC+2]); PC += 3
+    elif i == 0x09: SUB(code[PC+1], code[PC+2]); PC += 3
     elif i == 0x0A: OUT(code[PC+1]); PC += 2
     elif i == 0x0B: CMP(code[PC+1], code[PC+2], code[PC+3]); PC += 4
     elif i == 0x0C:
@@ -1208,6 +1374,13 @@ while PC < len(code):
     elif i == 0x28: USC(); PC += 1
     elif i == 0x29: CLS(); PC += 1
     elif i == 0x2A: STMP(code[PC+1]); PC += 2
+    elif i == 0x2B: TSF(code[PC+1], code[PC+2]); PC += 3
+    elif i == 0x2C: LDI(code[PC+1], code[PC+2]); PC += 3
+    elif i == 0x2D: CMPI(code[PC+1], code[PC+2], code[PC+3]); PC += 4
+    elif i == 0x2E: ADDI(code[PC+1], code[PC+2]); PC += 3
+    elif i == 0x2F: SUBI(code[PC+1], code[PC+2]); PC += 3
+    elif i == 0x30: PAL(code[PC+1], code[PC+2]); PC += 3
+    elif i == 0x31: PCOI(code[PC+1]); PC += 2
     else:
         print(f" fatal error: invalid instruction {hex(i)}")
         exit()

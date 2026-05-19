@@ -13,6 +13,8 @@
 0x01: LDB <loc> <address>
 0x02: LDX <loc> <address>
 0x20: LDY <loc> <address>
+// load immeadiate:
+0x2C: LDI <buffer> <value>
 
 // ST<buffer>: stores data from a buffer into an address inside bss
 0x03: STA <address>
@@ -26,17 +28,23 @@
 // DEC: decrements a buffer by 1
 0x07: DEC <buffer>
 
-// ADD: adds buffer B to buffer A
-0x08: ADD
+// ADD: adds buffer1 to buffer2
+0x08: ADD <buffer1> <buffer2>
+// ADD immeadiate:
+0x2E: ADDI <buffer> <value>
 
-// SUB: subtracts buffer B from buffer A
-0x09: SUB
+// SUB: subtracts buffer1 from buffer2
+0x09: SUB <buffer1> <buffer2>
+// SUB immeadiate:
+0x2F: SUBI <buffer> <value>
 
 // OUT: outputs a buffer
 0x0A: OUT <buffer>
 
 // CMP: compares buffer1 <operator> buffer2
 0x0B: CMP <buffer1> <buffer2> <operator, 0x00: ==, 0x01: !=, 0x02: >, 0x03: <, 0x04: >=, 0x05: <= >
+// CMP immeadiate:
+0x2D: CMPI <buffer> <value> <operator>
 
 // JMP: jumps PC to address index in code list
 0x0C: JMP <address>
@@ -56,7 +64,7 @@
 // OUTH: outputs hex value of the buffer
 0x11: OUTH <buffer>
 
-// SWAP: swaps buffer1 (A or B) with buffer2 (X or Y)
+// SWAP: swaps buffer1 with buffer2
 0x12: SWAP <buffer1> <buffer2>
 
 // CLC: clears all buffers
@@ -97,8 +105,13 @@
 0x23: PTO (pen to [x: buffer X, y: buffer Y])
 0x24: PDW (pen down)
 0x25: PUP (pen up)
-0x26: PCO <buffer> (pen color, in grayscale)
+0x26: PCO <buffer> (pen color)
+0x31: PCOI <value> (PCO immeadiate)
 0x27: PDO (pen done, resets pen pos to [0,0] and UPs the pen, sets pen active to 0x0)
 0x28: USC (update frame)
 0x29: CLS (clear screen, resets pen pos to [0,0] and UPs the pen)
 0x2A: STMP <address> (stamp sprite from rodata, to [x: buffer X, y: buffer Y])
+0x30: PAL <palette index> <color>
+
+// TSF: transfers <buffer1> to <buffer2> (copies)
+0x2B: TSF <buffer1> <buffer2>
