@@ -8,7 +8,7 @@ Amount of instructions: 43 (ranging from 0x00 to 0x2A)
 - `PC` is the program counter.
 - `code` is a list where your code will run, please remember that every index counts as an entire `PC` step. Some instructions take up more than 1 byte of `code` (which `PC` will then step forward more than 1 step).
 - The `CPU` is simulated (VM) that is protected (meaning once something is off, it reports the error and stops its code), it's currently 8-bit.
-- The `PPU` (Picture Processing Unit) is like GPU that has resolution of 256x256 pixels, where you can draw things (right now it's limited to grayscale color).
+- The `PPU` (Picture Processing Unit) is like GPU that has resolution of 256x256 pixels, where you can draw things (there is now color support for a single 8-bit byte, with color palette for sprites).
 
 ## The checker
 The checker is the one that checks if you set up `rodata` and `bss` structure correctly, by checking the following for each of item index in both of them:
